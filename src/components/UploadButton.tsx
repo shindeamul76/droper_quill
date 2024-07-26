@@ -1,18 +1,35 @@
 "use client"
 
 import { useState } from "react"
-import { Dialog, DialogTrigger, DialogContent } from "./ui/dialog";
-// import { Dialog, DialogContent, DialogTrigger } from "@radix-ui/react-dialog";
+import { Dialog, DialogTrigger, DialogContent } from "./ui/dialog";;
 import { Button } from "./ui/button";
-
 import Dropzone from 'react-dropzone'
 import { Cloud, File, Loader2 } from "lucide-react";
 import { Progress } from "./ui/progress";
+import { useUploadThing } from "@/lib/uploadthing";
+import { useToast } from "./ui/use-toast";
+import { useRouter } from "next/navigation";
+import { trpc } from "@/app/_trpc/client";
 
 const UploadDropzone = () => {
 
+    const router = useRouter()
     const [isUploading, setIsUploading] = useState<boolean>(true)
-    const [uploadProgress, setUploadProgress] = useState<number>(0)
+    const [uploadProgress, setUploadProgress] = useState<number>(0);
+
+    const { startUpload } = useUploadThing("pdfUploader")
+
+    const { toast } = useToast();
+
+    const { mutate: startPolling } = trpc.getFile.useMutation(
+        {
+          onSuccess: (file) => {
+            router.push(`/dashboard/${file.id}`)
+          },
+          retry: true,
+          retryDelay: 500,
+        }
+      )
 
     const startSimulatedProgress = () => {
         setUploadProgress(0)
@@ -32,12 +49,38 @@ const UploadDropzone = () => {
     
 
 
-    return <Dropzone multiple={false} onDrop={(acceptedFiles) => {
+    return <Dropzone multiple={false} onDrop={async (acceptedFiles) => {
         setIsUploading(true)
 
         const progressInterval = startSimulatedProgress()
+         
+        //  handle file uploading
+
+        const res = await startUpload(acceptedFiles);
+
+        if (!res) {
+            return toast({
+              title: 'Something went wrong',
+              description: 'Please try again later',
+              variant: 'destructive',
+            })
+          };
+
+          const [fileResponse] = res
+
+          const key = fileResponse?.key
+  
+          if (!key) {
+            return toast({
+              title: 'Something went wrong',
+              description: 'Please try again later',
+              variant: 'destructive',
+            })
+          }
+
         clearInterval(progressInterval)
-        setUploadProgress(100)
+        setUploadProgress(100);
+        startPolling({ key });
     }}>
         {({ getRootProps, getInputProps, acceptedFiles }) => (
             <div {...getRootProps()} className='border h-64 m-4 border-dashed border-gray-300 rounded-lg'>
